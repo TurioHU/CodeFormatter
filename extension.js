@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const vscode = require('vscode');
+const parameter = require('./src/function-c');
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -147,7 +148,7 @@ function activate(context) {
 
 					const editor = vscode.window.activeTextEditor;
 					const selection = editor.selection;
-					const text = editor.document.getText()
+					const text = editor.document.getText();
 
 					if(getLine(text, start_macro) == -1)
 					{
@@ -182,6 +183,74 @@ function activate(context) {
 			console.log(err);
 			vscode.window.showInformationMessage('Pelease put ModuleTemplate.json in .vscode!!!');
 		}
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('codeformatter.AddFunctionHeader', (uri) => {
+		try 
+		{
+			var uriPath = uri.path
+			console.log(`当前文件(夹)路径是：${uri ? uriPath : '空'}`);
+	
+			var data = fs.readFileSync(rootPath + '/.vscode/ModuleTemplate.json');
+			var jsonParsed = JSON.parse(data.toString()); 
+
+			var body = jsonParsed.module[0].function.body;
+			var returnT = jsonParsed.module[0].function.return;
+			var paramT = jsonParsed.module[0].function.param;
+			var funcnameT = jsonParsed.module[0].function.funcname;
+
+			const editor = vscode.window.activeTextEditor;
+			const selectionsArr = editor.selections;
+
+			var lineFirst = selectionsArr[0]._start._line;
+			var lineLast = selectionsArr[0]._end._line;
+			var len = lineLast - lineFirst + 1;
+
+			var moreLines = "";
+			for(var i = 0; i < len; i++)
+			{
+				moreLines += editor.document.lineAt(i + lineFirst).text;
+			}
+			try
+			{
+				parameter.init(moreLines)
+				if(parameter.match)
+				{
+					var param = ""
+					parameter.ret = parameter.ret.replace(/\r\n/g,'').replace(/\n/g,'').replace(/\s+/g,'');
+					returnT += (parameter.ret === "void") ? "None" : parameter.ret;
+
+					if(parameter.res.length > 0)
+					{
+						for(let value of parameter.res)
+						{
+							param += paramT + value.param + "\n";
+						}
+						param = param.substring(0, param.length - 1);
+					}
+					funcnameT += parameter.func
+				}
+
+				var fileData = ""
+				for (let value of body){fileData += value + "\n";} 
+				fileData = fileData.substring(0, fileData.length - 1);
+
+				fileData = fileData.replace("%funcname%", funcnameT)
+				fileData = fileData.replace("%param%", param)
+				fileData = fileData.replace("%return%", returnT)
+
+				const currentLineRange = editor.document.lineAt(selectionsArr[0].active.line - 1).range;
+				editor.edit(edit => edit.replace(currentLineRange, fileData));
+			}
+			catch (err) {
+				console.warn(err)
+				vscode.window.showInformationMessage('It is not a function!!!');
+			}
+	
+		} catch (err) {
+			vscode.window.showInformationMessage('Pelease put ModuleTemplate.json in .vscode!!!');
+		}
+
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('codeformatter.CreateModuleByTemplete', async (uri) => {
