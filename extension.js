@@ -8,6 +8,7 @@ const vscode = require('vscode');
 function activate(context) {
 	const rootPath = (vscode.workspace.workspaceFolders && (vscode.workspace.workspaceFolders.length > 0)) ? 
 						vscode.workspace.workspaceFolders[0].uri.fsPath : undefined;
+
 	console.log('Congratulations, your extension "codeformatter" is now active!');
 	context.subscriptions.push(vscode.commands.registerCommand('codeformatter.helloWorld', function () {
 		vscode.window.showInformationMessage('Hello World from CodeFormatter!');
@@ -19,111 +20,272 @@ function activate(context) {
 		console.log(rootPath);
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('codeformatter.GetCurrentFilePath', (uri) => {
-		console.log(`当前文件(夹)路径是：${uri ? uri.path : '空'}`);
-		// const editor = vscode.window.activeTextEditor;
-		// const selection = editor.selection;
-		// const currentLineRange = editor.document.lineAt(selection.active.line).range;
-		// editor.edit(edit => edit.replace(currentLineRange, "my new text"));
-
-		var items = [];
-		items.push({ label: 'Add File Header'});
-		items.push({ label: 'Add Function Header'});
-		items.push({ label: 'Update Function Header'});
-	
-		vscode.window.showQuickPick(items, { matchOnDetail: true, matchOnDescription: true }).then(selectedItem => {
-			console.log(selectedItem.label);
-		});
-	}));
-
-	context.subscriptions.push(vscode.commands.registerCommand('codeformatter.CreateModuleByTemplete', async (uri) => {
-		var uriPath = uri.path
-		console.log(`当前文件(夹)路径是：${uri ? uriPath : '空'}`);
-		
-		var jsonParsed =getJson(rootPath)
-		if(uriPath) 
+	context.subscriptions.push(vscode.commands.registerCommand('codeformatter.AddVariableHeader', (uri) => {
+		try 
 		{
-			if(fs.lstatSync(uriPath).isDirectory()) 
+			var uriPath = uri.path
+			console.log(`当前文件(夹)路径是：${uri ? uriPath : '空'}`);
+
+			if(path.extname(uriPath) == ".c")
 			{
-				var options = {
-					value: "Component",
-					ignoreFocusOut: true,
-					prompt: 'Enter new component name',
-					placeHolder: ""
+				var data = fs.readFileSync(rootPath + '/.vscode/ModuleTemplate.json');
+				var jsonParsed = JSON.parse(data.toString()); 
+				console.log(jsonParsed);
+
+				var componentName = path.basename(uriPath, path.extname(uriPath))
+				var body = jsonParsed.module[0].variable.body;
+				var include = jsonParsed.module[0].variable.include;
+				var start_macro = componentName.toUpperCase() + "_START" + body
+				var stop_macro = componentName.toUpperCase() + "_STOP" + body
+
+
+				console.log(start_macro);
+
+				var items = [];
+				for(let value of jsonParsed.module[0].variable.type) {
+					items.push({ label: start_macro + value, str: value});
 				}
-				var componentName = await vscode.window.showInputBox(options);
-				if(typeof componentName != "undefined" 
-					&& componentName 
-					&& typeof componentName.valueOf() === "string")
-				{
-					if(fs.existsSync(path.join(uriPath, componentName))) 
+
+				vscode.window.showQuickPick(items, { matchOnDetail: true, matchOnDescription: true }).then(selectedItem => {
+					console.log(selectedItem.str);
+					start_macro += selectedItem.str;
+					stop_macro += selectedItem.str;
+
+					include = getData(include, "%ComponentName%", componentName);
+
+					var fileData = ""
+					fileData += "\n"
+					fileData += "#define " + start_macro + "\n"
+					fileData += "#include \"" + include + "\"\n"
+					fileData += "\n"
+					fileData += "\n"
+					fileData += "#define " + stop_macro + "\n"
+					fileData += "#include \"" + include + "\"\n"
+					fileData += "\n"
+
+					const editor = vscode.window.activeTextEditor;
+					const selection = editor.selection;
+					const text = editor.document.getText()
+					if(getLine(text, start_macro) == -1)
 					{
-						vscode.window.showInformationMessage('Directory exists!');
-					}
-					else if(fs.existsSync(path.join(uriPath, "Doc")))
-					{
-						vscode.window.showInformationMessage('Directory is module, it can not be created again!');
+						var  posCurrent = selection.active.line;
+						console.log(posCurrent);
+						var posVariable = getLine(text, " * Variables");
+						var posConstant = getLine(text, " * Constant");
+						
+						console.log(posVariable, posConstant);
+
+						if((parseInt(posCurrent.toString()) > parseInt(posVariable.toString())) && 
+						(parseInt(posCurrent.toString()) < parseInt(posConstant.toString())))
+						{
+							const currentLineRange = editor.document.lineAt(selection.active.line).range;
+							editor.edit(edit => edit.replace(currentLineRange, fileData));
+						}
+						else
+						{
+							vscode.window.showInformationMessage('This line is not in Variables area!!!');
+						}
 					}
 					else
 					{
-						fs.mkdir(path.join(uriPath, componentName),{recursive:true},(err)=>{
-							if(err)
-							{
-								throw err;
-							}
-							else
-							{
-								console.log('Create Module folder ok!');
-								fs.mkdir(path.join(uriPath, componentName, "Src"),{recursive:true},(err)=>{
-									if(err){
-										throw err;
-									}else{
-										console.log('Create Src folder ok!');
-										for(let fileInfo of jsonParsed.module)
-										{
-											var fileName = fileInfo.name.replace("$ComponentName$", componentName);
-											var filePath = path.join(uriPath, componentName, fileName)
-											console.log(filePath);
-	
-											var fileData = "";
-											for (let value of fileInfo.data[0].body){fileData += getData(value, "$ComponentName$", componentName );} 
-											fs.writeFile(filePath, fileData,'utf8',function(error){
-												if(error){
-													console.log(error);
-													return false;
-												}
-												console.log('Create and write file ok!');
-											});
-										}
-									}
-								});
-							}
-						});
-						fs.mkdir(path.join(uriPath, componentName, "Doc"),{recursive:true},(err)=>{
-							if(err)
-							{
-								throw err;
-							}
-							else
-							{
-								console.log('Create Doc folder ok!');
-							}
-						});
+						vscode.window.showInformationMessage('This macro is already in this file!!!');
 					}
-				}
-				else
-				{
-					console.log("component name is null");
-				}
+				});
 			}
 			else
 			{
-				vscode.window.showInformationMessage('This is a file, Pelease select a directory!!!');
-			}	
+				vscode.window.showInformationMessage('This is not a c file, pelease select a c file!!!');
+			}
+		} catch (err) {
+			console.log(err);
+			vscode.window.showInformationMessage('Pelease put ModuleTemplate.json in .vscode!!!');
 		}
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('codeformatter.UpdateModuleByTemplete', async (uri) => {
+	context.subscriptions.push(vscode.commands.registerCommand('codeformatter.AddConstantHeader', (uri) => {
+		try 
+		{
+			var uriPath = uri.path
+			console.log(`当前文件(夹)路径是：${uri ? uriPath : '空'}`);
+
+			if(path.extname(uriPath) == ".c")
+			{
+				var data = fs.readFileSync(rootPath + '/.vscode/ModuleTemplate.json');
+				var jsonParsed = JSON.parse(data.toString()); 
+				console.log(jsonParsed);
+
+				var componentName = path.basename(uriPath, path.extname(uriPath))
+				var body = jsonParsed.module[0].constant.body;
+				var include = jsonParsed.module[0].constant.include;
+				var start_macro = componentName.toUpperCase() + "_START" + body
+				var stop_macro = componentName.toUpperCase() + "_STOP" + body
+
+
+				console.log(start_macro);
+
+				var items = [];
+				for(let value of jsonParsed.module[0].constant.type) {
+					items.push({ label: start_macro + value, str: value});
+				}
+
+				vscode.window.showQuickPick(items, { matchOnDetail: true, matchOnDescription: true }).then(selectedItem => {
+					console.log(selectedItem.str);
+					start_macro += selectedItem.str;
+					stop_macro += selectedItem.str;
+
+					include = getData(include, "%ComponentName%", componentName);
+
+					var fileData = ""
+					fileData += "\n"
+					fileData += "#define " + start_macro + "\n"
+					fileData += "#include \"" + include + "\"\n"
+					fileData += "\n"
+					fileData += "\n"
+					fileData += "#define " + stop_macro + "\n"
+					fileData += "#include \"" + include + "\"\n"
+					fileData += "\n"
+
+					const editor = vscode.window.activeTextEditor;
+					const selection = editor.selection;
+					const text = editor.document.getText()
+
+					if(getLine(text, start_macro) == -1)
+					{
+						var posCurrent = selection.active.line;
+						var posConstant = getLine(text, " * Constant");
+						var posDeclarations = getLine(text, " * Declarations");
+						console.log(posConstant, posDeclarations);
+						console.log(selection.active.line);
+	
+						if((parseInt(posCurrent.toString()) > parseInt(posConstant.toString())) && 
+						   (parseInt(posCurrent.toString()) < parseInt(posDeclarations.toString())))
+						{
+							const currentLineRange = editor.document.lineAt(selection.active.line).range;
+							editor.edit(edit => edit.replace(currentLineRange, fileData));
+						}
+						else
+						{
+							vscode.window.showInformationMessage('This line is not in Constant area!!!');
+						}
+					}
+					else
+					{
+						vscode.window.showInformationMessage('This macro is already in this file!!!');
+					}
+				});
+			}
+			else
+			{
+				vscode.window.showInformationMessage('This is not a c file, pelease select a c file!!!');
+			}
+		} catch (err) {
+			console.log(err);
+			vscode.window.showInformationMessage('Pelease put ModuleTemplate.json in .vscode!!!');
+		}
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('codeformatter.CreateModuleByTemplete', async (uri) => {
+		try 
+		{
+			var uriPath = uri.path
+			console.log(`当前文件(夹)路径是：${uri ? uriPath : '空'}`);
+	
+			var data = fs.readFileSync(rootPath + '/.vscode/ModuleTemplate.json');
+			var jsonParsed = JSON.parse(data.toString()); 
+			
+			if(uriPath) 
+			{
+				try 
+				{
+					if(fs.lstatSync(uriPath).isDirectory()) 
+					{
+						var options = {
+							value: "Component",
+							ignoreFocusOut: true,
+							prompt: 'Enter new component name',
+							placeHolder: ""
+						}
+						var componentName = await vscode.window.showInputBox(options);
+						if(typeof componentName != "undefined" 
+							&& componentName 
+							&& typeof componentName.valueOf() === "string")
+						{
+							if(fs.existsSync(path.join(uriPath, componentName))) 
+							{
+								vscode.window.showInformationMessage('Directory exists!');
+							}
+							else if(fs.existsSync(path.join(uriPath, "Doc")))
+							{
+								vscode.window.showInformationMessage('Directory is module, it can not be created again!');
+							}
+							else
+							{
+								fs.mkdir(path.join(uriPath, componentName),{recursive:true},(err)=>{
+									if(err)
+									{
+										throw err;
+									}
+									else
+									{
+										console.log('Create Module folder ok!');
+										fs.mkdir(path.join(uriPath, componentName, "Src"),{recursive:true},(err)=>{
+											if(err){
+												throw err;
+											}else{
+												console.log('Create Src folder ok!');
+												for(let fileInfo of jsonParsed.module[0].file)
+												{
+													var fileName = fileInfo.name.replace("%ComponentName%", componentName);
+													var filePath = path.join(uriPath, componentName, fileName)
+													console.log(filePath);
+			
+													var fileData = "";
+													for (let value of fileInfo.data[0].body){fileData += getData(value, "%ComponentName%", componentName ) + "\n";} 
+													fs.writeFile(filePath, fileData,'utf8',function(error){
+														if(error){
+															console.log(error);
+															return false;
+														}
+														console.log('Create and write file ok!');
+													});
+												}
+											}
+										});
+									}
+								});
+								fs.mkdir(path.join(uriPath, componentName, "Doc"),{recursive:true},(err)=>{
+									if(err)
+									{
+										throw err;
+									}
+									else
+									{
+										console.log('Create Doc folder ok!');
+									}
+								});
+							}
+						}
+						else
+						{
+							console.log("component name is null");
+						}
+					}
+					else
+					{
+						vscode.window.showInformationMessage('This is a file, Pelease select a directory!!!');
+					}	
+				}
+				catch(err)
+				{
+					console.log(err);
+				}
+			}
+		} catch (err) {
+			vscode.window.showInformationMessage('Pelease put ModuleTemplate.json in .vscode!!!');
+		}
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('codeformatter.RenameModuleByTemplete', async (uri) => {
 		var uriPath = uri.path
 		if(uriPath) {
 			if(fs.lstatSync(uriPath).isDirectory()) {
@@ -132,7 +294,7 @@ function activate(context) {
 				if(fs.existsSync(path.join(uriPath, "Doc")))
 				{
 					var options = {
-						value: "Component",
+						value: folderName,
 						ignoreFocusOut: true,
 						prompt: 'Enter new component name',
 						placeHolder: ""
@@ -148,15 +310,18 @@ function activate(context) {
 						}
 						else
 						{
+							console.log(componentName);
+							fileDisplay(uriPath, folderName, componentName);
 							var uriPathNew = getData(uriPath, folderName, componentName);
+							uriPathNew = uriPathNew.replace(/\r\n/g,'').replace(/\n/g,'').replace(/\s+/g,'');
+							console.log(uriPathNew);
 							try {
 								fs.renameSync(uriPath, uriPathNew);
 							}
 							catch (e) {
-								fs.renameSync(uriPath, uriPathNew);
+								console.warn(e);
 							}
-							fileDisplay(uriPathNew, folderName, componentName);
-							console.log(componentName);
+							console.log("Rename Okay!!!");
 						}
 					}
 					else
@@ -174,8 +339,17 @@ function activate(context) {
 				vscode.window.showInformationMessage('This is a file, Pelease select a directory!!!');
 			}	
 		}
-
 	}));
+}
+
+function getLine(text, str)
+{
+	let lines = text.split(/\r?\n/);
+	for(let i in lines) {
+		if(lines[i].indexOf(str) != -1) 
+		return i;
+	}
+	return -1;
 }
 
 function getData(str, oldName, newName)
@@ -191,87 +365,71 @@ function getData(str, oldName, newName)
 	}
 
 	return ((upperCon) ? (str.replace(re, newName.toUpperCase())) : 
-						 (str.replace(re, newName))) + "\n";
-}
-
-function getJson(rootPath)
-{
-	var jsonParsed = null;
-	fs.readFile(rootPath + '/sample.json', function(err, data) {  
-		if(err)
-		{
-			console.log('error!');
-		}
-		else
-		{
-			jsonParsed = JSON.parse(data.toString()); 
-			console.log(jsonParsed);
-			console.log(jsonParsed.module[0].name) ;
-		}
-	});
-	return jsonParsed;
+						 (str.replace(re, newName)));
 }
 
 function fileDisplay(filePath, oldName, newName) 
 {
-    fs.readdir(filePath, function(err, files) 
+	try 
 	{
-        if (err) 
+		let files = fs.readdirSync(filePath); 
+		files.forEach(function(filename) 
 		{
-            console.warn(err, "读取文件夹错误！")
-        } 
-		else 
-		{
-            files.forEach(function(filename) 
+			try 
 			{
-                var filedir = path.join(filePath, filename);
+				var filedir = path.join(filePath, filename);
+				filedir = filedir.replace(/\r\n/g,'').replace(/\n/g,'').replace(/\s+/g,'');
 				console.log(filedir);
-                fs.stat(filedir, function(eror, stats) 
+
+				let stats = fs.statSync(filedir) 
+				var isFile = stats.isFile(); 
+				var isDir = stats.isDirectory();
+				if (isFile) 
 				{
-                    if (eror) 
+					var filenameNew = filename.replace(oldName, newName);
+					var filedirNew = path.join(filePath, filenameNew);
+					filedirNew = filedirNew.replace(/\r\n/g,'').replace(/\n/g,'').replace(/\s+/g,'');
+					console.log(filedirNew);
+					try 
 					{
-                        console.warn('获取文件stats失败');
-                    } 
-					else 
+						fs.renameSync(filedir, filedirNew);
+
+						let result = "";
+						let data = fs.readFileSync(filedirNew, 'utf8');
+						// split the contents by new line
+						let lines = data.split(/\r?\n/);
+						// print all lines
+						lines.forEach((line) => {result += getData(line, oldName, newName) + "\n";});
+						try 
+						{
+							fs.writeFileSync(filedirNew, result, 'utf8',);
+						}
+						catch(err)
+						{
+							return console.log(err);
+						}
+					}
+					catch(err)
 					{
-                        var isFile = stats.isFile(); //是文件
-                        var isDir = stats.isDirectory(); //是文件夹
-                        if (isFile) 
-						{
-							var filenameNew = filename.replace(oldName, newName);
-							var filedirNew = path.join(filePath, filenameNew);
-							// var filedirNew = filedir.replace(oldName, newName);
-							fs.rename(filedir, filedirNew, (err)=>{ throw  err; });
-							fs.readFile(filedirNew, 'utf8', function (err, data) 
-							{
-								if (err) 
-								{
-									return console.log(err);
-								}
-								var result = "";
-								 // split the contents by new line
-    							const lines = data.split(/\r?\n/);
-								 // print all lines
-								lines.forEach((line) => {
-									result += getData(line, oldName, newName);
-								});
-
-								fs.writeFile(filedirNew, result, 'utf8', function (err) {
-									if (err) return console.log(err);
-								});
-							});
-
-                            console.log(filedirNew);
-                        }
-                        if (isDir) 
-						{
-                            fileDisplay(filedir, oldName, newName); //递归，如果是文件夹，就继续遍历该文件夹下面的文件
-                        }
-                    }
-                })
-            });
-        }
-    });
+						return console.log(err);
+					}
+				}
+				if (isDir) 
+				{
+					fileDisplay(filedir, oldName, newName); //递归，如果是文件夹，就继续遍历该文件夹下面的文件
+				}
+			}
+			catch(err)
+			{
+				console.warn(err);
+				console.warn('获取文件stats失败');
+			}
+		});
+	}
+	catch(err)
+	{
+		console.warn(err, "读取文件夹错误！");	
+	}
 }
 
 

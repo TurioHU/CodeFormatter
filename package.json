@@ -14,9 +14,10 @@
 		"Other"
 	],
 	"activationEvents": [
-		"onCommand:codeformatter.GetCurrentFilePath",
+		"onCommand:codeformatter.AddVariableHeader",
+		"onCommand:codeformatter.AddConstantHeader",
 		"onCommand:codeformatter.CreateModuleByTemplete",
-		"onCommand:codeformatter.UpdateModuleByTemplete",
+		"onCommand:codeformatter.RenameModuleByTemplete",
         "onCommand:codeformatter.helloWorld"
 	],
 	"main": "./extension.js",
@@ -25,7 +26,12 @@
             "editor/context": [
                 {
                     "when": "editorFocus",
-                    "command": "codeformatter.GetCurrentFilePath",
+                    "command": "codeformatter.AddVariableHeader",
+                    "group": "1_modification"
+                },
+				{
+                    "when": "editorFocus",
+                    "command": "codeformatter.AddConstantHeader",
                     "group": "1_modification"
                 }
             ],
@@ -35,7 +41,7 @@
                     "group": "1_modification"
                 },
 				{
-					"command": "codeformatter.UpdateModuleByTemplete",
+					"command": "codeformatter.RenameModuleByTemplete",
                     "group": "1_modification"
                 }
             ]
@@ -43,16 +49,20 @@
 
 		"commands": [
 			{
-				"command": "codeformatter.GetCurrentFilePath",
-				"title": "CF: GetCurrentFilePath"
+				"command": "codeformatter.AddVariableHeader",
+				"title": "CF: AddVariableHeader"
+			},
+			{
+				"command": "codeformatter.AddConstantHeader",
+				"title": "CF: AddConstantHeader"
 			},
 			{
 				"command": "codeformatter.CreateModuleByTemplete",
 				"title": "CF: CreateModuleByTemplete"
 			},
 			{
-				"command": "codeformatter.UpdateModuleByTemplete",
-				"title": "CF: UpdateModuleByTemplete"
+				"command": "codeformatter.RenameModuleByTemplete",
+				"title": "CF: RenameModuleByTemplete"
 			}
 		]
 	},
