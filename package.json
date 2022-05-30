@@ -6,10 +6,17 @@
 	"engines": {
 		"vscode": "^1.67.0"
 	},
+	"publisher": "hu",
+	"repository": {
+        "url": "https://github.com/TurioHU/CodeFormatter.git"
+    },
 	"categories": [
 		"Other"
 	],
 	"activationEvents": [
+		"onCommand:codeformatter.GetCurrentFilePath",
+		"onCommand:codeformatter.CreateModuleByTemplete",
+		"onCommand:codeformatter.UpdateModuleByTemplete",
         "onCommand:codeformatter.helloWorld"
 	],
 	"main": "./extension.js",
