@@ -310,15 +310,91 @@ function activate(context) {
 			
 													var fileData = "";
 													for (let value of fileInfo.data[0].body){fileData += getData(value, "%ComponentName%", componentName ) + "\n";} 
-													fs.writeFile(filePath, fileData,'utf8',function(error){
-														if(error){
-															console.log(error);
-															return false;
-														}
+													try{
+														fs.writeFileSync(filePath, fileData,'utf8');
 														console.log('Create and write file ok!');
-													});
+													}
+													catch(error)
+													{
+														console.log(error);
+														return false;
+													}
+													
 												}
+												console.log('Create Src folder ok!');
 											}
+											
+											for(let fileInfo of jsonParsed.module[0].file)
+											{
+												if(fileInfo.name.indexOf("MemMap.h") != -1)
+												{
+													var fileName = fileInfo.name.replace("%ComponentName%", componentName);
+													var filePath = path.join(uriPath, componentName, fileName)
+													console.log(filePath);
+
+													try 
+													{
+														let writeStart = false
+														let result = "";
+														let data = fs.readFileSync(filePath, 'utf8');
+														let lines = data.split(/\r?\n/);
+														lines.forEach((line) => {
+															result += line + "\n";
+															if(line.indexOf("* Includes") != -1)
+															{
+																writeStart = true;
+															}
+															if(writeStart)
+															{
+																/* white lines */
+																if(line.replace(/\r\n/g,'').replace(/\n/g,'').replace(/\s+/g,'') == "")
+																{
+																	let tmpResult = ""
+																	writeStart = false;
+																	tmpResult += getBody(componentName, 
+																						"/* VAR (RAM) */\n",
+																						jsonParsed.module[0].variable.type, 
+																						jsonParsed.module[0].memmap.body, 
+																						jsonParsed.module[0].variable.body);
+
+																	tmpResult += getBody(componentName,  
+																						"/* Const (ROM) */\n",
+																						jsonParsed.module[0].constant.type, 
+																						jsonParsed.module[0].memmap.body, 
+																						jsonParsed.module[0].constant.body);
+
+																	tmpResult += getBody(componentName,  
+																						"/* Code (ROM) */\n",
+																						jsonParsed.module[0].function.type, 
+																						jsonParsed.module[0].memmap.body, 
+																						jsonParsed.module[0].function.body);
+																	
+																	for(let framework of jsonParsed.module[0].memmap.framework)
+																	{
+																		result += framework + "\n"
+																	}
+																	result = result.replace("%body%",tmpResult)
+																}
+															}
+														});
+														try 
+														{
+															fs.writeFileSync(filePath, result, 'utf8');
+														}
+														catch(err)
+														{
+															console.log(err)
+															return ;
+														}
+													}
+													catch(err)
+													{
+														return console.log(err);
+													}
+												}
+												var fileName = fileInfo.name.replace("%ComponentName%", componentName);
+											}
+
 										});
 									}
 								});
@@ -411,6 +487,23 @@ function activate(context) {
 	}));
 }
 
+function getBody(component, header, types, body_memap, body_option)
+{
+	var tmpResult = header
+	for(let type of types)
+	{
+		for(let body of body_memap)
+		{
+			tmpResult += body + "\n"
+		}
+		tmpResult += "\n"
+		tmpResult = getData(tmpResult, "%Section%", body_option + type);
+		tmpResult = getData(tmpResult, "%ComponentName%", component);															
+	}
+	return tmpResult;
+}
+
+
 function getLine(text, str)
 {
 	let lines = text.split(/\r?\n/);
@@ -428,7 +521,9 @@ function getData(str, oldName, newName)
 
 	if((str.indexOf("#define") != -1) 
 	    || (str.indexOf("#ifndef") != -1) 
-		|| (str.indexOf("#endif") != -1))
+		|| (str.indexOf("#endif") != -1)
+		|| (str.indexOf("#elif defined") != -1)
+		|| (str.indexOf("#undef") != -1))
 	{
 		upperCon = true;
 	}
@@ -471,7 +566,7 @@ function fileDisplay(filePath, oldName, newName)
 						lines.forEach((line) => {result += getData(line, oldName, newName) + "\n";});
 						try 
 						{
-							fs.writeFileSync(filedirNew, result, 'utf8',);
+							fs.writeFileSync(filedirNew, result, 'utf8');
 						}
 						catch(err)
 						{
