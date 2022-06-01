@@ -194,7 +194,7 @@ function activate(context) {
 			var data = fs.readFileSync(rootPath + '/.vscode/ModuleTemplate.json');
 			var jsonParsed = JSON.parse(data.toString()); 
 
-			var body = jsonParsed.module[0].function.body;
+			var body = jsonParsed.module[0].function.header;
 			var returnT = jsonParsed.module[0].function.return;
 			var paramT = jsonParsed.module[0].function.param;
 			var funcnameT = jsonParsed.module[0].function.funcname;
@@ -289,125 +289,173 @@ function activate(context) {
 							}
 							else
 							{
-								fs.mkdir(path.join(uriPath, componentName),{recursive:true},(err)=>{
-									if(err)
+								try
+								{
+									fs.mkdirSync(path.join(uriPath, componentName),{recursive:true});
+									console.log('Create Module folder ok!');
+
+									/* create folders, if folder is not exist, create it */
+									for(let folder of jsonParsed.module[0].folder) 
 									{
-										throw err;
+										var folderPath = path.join(uriPath, componentName, folder.name);
+										if(!fs.existsSync(folderPath)) 
+										{
+											try
+											{
+												fs.mkdirSync((folderPath),{recursive:true});
+												console.log('Create', folderPath, 'folder ok!');
+											}
+											catch(error)
+											{
+												console.warn("Can not create", folder, "folder!");
+												console.log(error);
+												
+												return false;
+											}
+										}
+										else
+										{
+											console.log('Folder exists!');
+										}
 									}
-									else
+								
+									/* create files, if folder is not exist, create it */
+									for(let fileInfo of jsonParsed.module[0].file)
 									{
-										console.log('Create Module folder ok!');
-										fs.mkdir(path.join(uriPath, componentName, "Src"),{recursive:true},(err)=>{
-											if(err){
-												throw err;
-											}else{
-												console.log('Create Src folder ok!');
-												for(let fileInfo of jsonParsed.module[0].file)
+										var fileName = fileInfo.name.replace("%ComponentName%", componentName);
+										var filePath = path.join(uriPath, componentName, fileName);
+										console.log("filePath:", filePath);
+										var folders = fileName.split("/").slice(0, -1);
+										console.log(folders)
+
+										var folderTmp = ""
+										for(var folder of folders)
+										{
+											try
+											{
+												folderTmp += folder;
+												var folderPath = path.join(uriPath, componentName, folderTmp)
+												
+												if(!fs.existsSync(folderPath)) 
 												{
-													var fileName = fileInfo.name.replace("%ComponentName%", componentName);
-													var filePath = path.join(uriPath, componentName, fileName)
-													console.log(filePath);
-			
-													var fileData = "";
-													for (let value of fileInfo.data[0].body){fileData += getData(value, "%ComponentName%", componentName ) + "\n";} 
-													try{
-														fs.writeFileSync(filePath, fileData,'utf8');
-														console.log('Create and write file ok!');
+													try
+													{
+														fs.mkdirSync((folderPath),{recursive:true});
+														console.log('Create', folderTmp, 'folder ok!');
 													}
 													catch(error)
 													{
+														console.warn("Can not create", folderTmp, "folder!");
 														console.log(error);
-														return false;
 													}
-													
 												}
-												console.log('Create Src folder ok!');
-											}
-											
-											for(let fileInfo of jsonParsed.module[0].file)
-											{
-												if(fileInfo.name.indexOf("MemMap.h") != -1)
+												else
 												{
-													var fileName = fileInfo.name.replace("%ComponentName%", componentName);
-													var filePath = path.join(uriPath, componentName, fileName)
-													console.log(filePath);
-
-													try 
-													{
-														let writeStart = false
-														let result = "";
-														let data = fs.readFileSync(filePath, 'utf8');
-														let lines = data.split(/\r?\n/);
-														lines.forEach((line) => {
-															result += line + "\n";
-															if(line.indexOf("* Includes") != -1)
-															{
-																writeStart = true;
-															}
-															if(writeStart)
-															{
-																/* white lines */
-																if(line.replace(/\r\n/g,'').replace(/\n/g,'').replace(/\s+/g,'') == "")
-																{
-																	let tmpResult = ""
-																	writeStart = false;
-																	tmpResult += getBody(componentName, 
-																						"/* VAR (RAM) */\n",
-																						jsonParsed.module[0].variable.type, 
-																						jsonParsed.module[0].memmap.body, 
-																						jsonParsed.module[0].variable.body);
-
-																	tmpResult += getBody(componentName,  
-																						"/* Const (ROM) */\n",
-																						jsonParsed.module[0].constant.type, 
-																						jsonParsed.module[0].memmap.body, 
-																						jsonParsed.module[0].constant.body);
-
-																	tmpResult += getBody(componentName,  
-																						"/* Code (ROM) */\n",
-																						jsonParsed.module[0].function.type, 
-																						jsonParsed.module[0].memmap.body, 
-																						jsonParsed.module[0].function.body);
-																	
-																	for(let framework of jsonParsed.module[0].memmap.framework)
-																	{
-																		result += framework + "\n"
-																	}
-																	result = result.replace("%body%",tmpResult)
-																}
-															}
-														});
-														try 
-														{
-															fs.writeFileSync(filePath, result, 'utf8');
-														}
-														catch(err)
-														{
-															console.log(err)
-															return ;
-														}
-													}
-													catch(err)
-													{
-														return console.log(err);
-													}
+													console.log('Folder exists!');
 												}
-												var fileName = fileInfo.name.replace("%ComponentName%", componentName);
 											}
+											catch(error)
+											{
+												console.log(error);
+											}
+										}
 
-										});
+										/* get file template, replace ComponentName by flag */
+										var fileData = "";
+										for (let value of fileInfo.data[0].body)
+										{
+											fileData += getData(value, "%ComponentName%", componentName ) + "\n";
+										} 
+
+										try
+										{
+											fs.writeFileSync(filePath, fileData,'utf8');
+											console.log('Create and write file ok!');
+										}
+										catch(error)
+										{
+											console.warn("Failed to write", filePath, "file !");
+											console.log(error);
+											return false;
+										}
+										
+										/* update memmap file */
+										if(fileInfo.name.indexOf("MemMap.h") != -1)
+										{
+											var fileName = fileInfo.name.replace("%ComponentName%", componentName);
+											var filePath = path.join(uriPath, componentName, fileName)
+											console.log(filePath);
+
+											try 
+											{
+												let writeStart = false
+												let result = "";
+												let data = fs.readFileSync(filePath, 'utf8');
+												let lines = data.split(/\r?\n/);
+												lines.forEach((line) => {
+													result += line + "\n";
+													if(line.indexOf("* Includes") != -1)
+													{
+														writeStart = true;
+													}
+													if(writeStart)
+													{
+														/* white lines */
+														if(line.replace(/\r\n/g,'').replace(/\n/g,'').replace(/\s+/g,'') == "")
+														{
+															let tmpResult = ""
+															writeStart = false;
+															tmpResult += getBody(componentName, 
+																				"/* VAR (RAM) */\n",
+																				jsonParsed.module[0].variable.type, 
+																				jsonParsed.module[0].memmap.body, 
+																				jsonParsed.module[0].variable.body);
+
+															tmpResult += getBody(componentName,  
+																				"/* Const (ROM) */\n",
+																				jsonParsed.module[0].constant.type, 
+																				jsonParsed.module[0].memmap.body, 
+																				jsonParsed.module[0].constant.body);
+
+															tmpResult += getBody(componentName,  
+																				"/* Code (ROM) */\n",
+																				jsonParsed.module[0].function.type, 
+																				jsonParsed.module[0].memmap.body, 
+																				jsonParsed.module[0].function.body);
+															
+															for(let framework of jsonParsed.module[0].memmap.framework)
+															{
+																result += framework + "\n"
+															}
+															result = result.replace("%body%",tmpResult)
+														}
+													}
+												});
+
+												try 
+												{
+													fs.writeFileSync(filePath, result, 'utf8');
+												}
+												catch(err)
+												{
+													console.warn("Failed to write", filePath, "file !");
+													console.log(err)
+													return false;
+												}
+											}
+											catch(err)
+											{
+												console.warn("Failed to read", filePath, "file !");
+												console.log(err);
+												return false;
+											}
+										}
 									}
-								});
-								fs.mkdir(path.join(uriPath, componentName, "Doc"),{recursive:true},(err)=>{
-									if(err)
-									{
-										throw err;
-									}
-									else
-									{
-										console.log('Create Doc folder ok!');
-									}
-								});
+								}
+								catch(error)
+								{
+									console.log(error);
+								}
 							}
 						}
 						else
@@ -422,6 +470,7 @@ function activate(context) {
 				}
 				catch(err)
 				{
+					console.warn("Can not create Module folder!");
 					console.log(err);
 				}
 			}
